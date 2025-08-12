@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+############################ PostgreSQL DB #############################
+  postgres_identity-service:  # 서비스 이름 (다른 서비스에서 이 이름으로 접근 가능)
+    image: postgres:16-alpine # 안정성을 위해 latest 대신 특정 버전 사용
+    restart: always # 컨테이너가 중지되면 항상 재시작
+    environment:  # PostgreSQL 환경 변수 설정
+      POSTGRES_USER: identity_service_admin # 접속 사용자 이름
+      POSTGRES_PASSWORD: identity_service_password # 접속 비밀번호
+      POSTGRES_DB: identity_service_db  # 데이터베이스 이름
+      PGDATA: /var/lib/postgresql/data # 컨테이너 내부 데이터 저장 경로
+    ports:
+      - "5433:5432" # 호스트와 컨테이너의 포트 매핑
+    networks:
+      - web_skeleton_network # 네트워크 설정
+    volumes:
+      # Bind Mount 설정 
+      - ./database:/var/lib/postgresql/data # 데이터 저장을 위한 볼륨 마운트
+      - ./db_init_scripts:/docker-entrypoint-initdb.d # 초기화 스크립트 경로
+
+########################## identity-service ############################
+  identity-service:
+    build: . # <--- Dockerfile이 현재 폴더(.)에 있다고 Docker Compose에게 알려줌
+    image: identity-service:latest # 이 이름으로 이미지를 빌드하고 태그를 붙임 (local-only)
+    ports:
+      - "8081:8080" # 호스트 8081 -> 컨테이너 8080 (스프링부트 기본 포트)
+    depends_on:
+      - postgres_identity-service # PostgreSQL 서비스에 의존
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRINGDOC_API_DOCS_PATH=/identity-service/api-docs
+      - SPRINGDOC_SWAGGER_UI_PATH=/identity-service/swagger-ui
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres_identity-service:5432/identity_service_db # PostgreSQL 데이터베이스 URL
+      - SPRING_DATASOURCE_USERNAME=identity_service_admin # PostgreSQL 사용자 이름
+      - SPRING_DATASOURCE_PASSWORD=identity_service_password # PostgreSQL 비밀번호
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update # JPA 설정
+      - SPRING_JPA_SHOW_SQL=true # SQL 쿼리 출력 설정
+      - SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL=true # SQL 포맷팅 설정
+      - SPRING_JPA_PROPERTIES_HIBERNATE_DEFAULT_SCHEMA=public # 기본 스키마 설정
+    networks:
+      - web_skeleton_network
+
+############################# Environment ##############################
+networks:
+  web_skeleton_network:
+    driver: bridge
